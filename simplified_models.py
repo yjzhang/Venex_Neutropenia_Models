@@ -181,13 +181,13 @@ def build_pm_model_m2(model, wbc, blasts, theta=None, n_samples=None, params_to_
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
     blast_data = blasts[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
-    print('blast_data:', blast_data)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         # TODO: uniform priors for slope?
@@ -291,6 +291,7 @@ Xwbc = B;
 """
 
 param_names_m2_wbc_only = ['ktr', 'gam', 'slope_ven_wbc', 'slope_aza_wbc', 'B', 'B0']
+param_bounds_m2_wbc_only = [(0, 1), (0, 1), (0, 5), (0, 5), (0, 10), (0, 10)]
 
 def initialization_fn_m2_wbc_only(model, param_vals):
     # initializing some of the model params to equilibrium values?
@@ -304,7 +305,8 @@ def initialization_fn_m2_wbc_only(model, param_vals):
     return model
 
 
-def build_pm_model_m2_wbc_only(model, wbc, theta=None, n_samples=None, params_to_fit=None, **params):
+def build_pm_model_m2_wbc_only(model, wbc, theta=None, n_samples=None, params_to_fit=None,
+        uniform_prior=False, **params):
     """
     Builds a PyMC model
     """
@@ -316,51 +318,25 @@ def build_pm_model_m2_wbc_only(model, wbc, theta=None, n_samples=None, params_to
         theta = default_params
     pytensor_forward_function = generate_forward_function_wbc_only(model, wbc, n_samples=n_samples, params_to_fit=params_to_fit)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
-    print('theta:', theta)
-    print('wbc_data:', wbc_data)
+    #print('theta:', theta)
+    #print('wbc_data:', wbc_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         # TODO: uniform priors for slope?
-        ktr = pm.TruncatedNormal("ktr", mu=theta[0], sigma=theta[0]/2, lower=0, initval=theta[0])
-        gam = pm.TruncatedNormal("gam", mu=theta[1], sigma=theta[1]/3, lower=0, initval=theta[1])
-        slope_ven_wbc = pm.TruncatedNormal("slope_ven_wbc", mu=theta[2], sigma=theta[2]/2, lower=0, initval=theta[2])
-        slope_aza_wbc = pm.TruncatedNormal("slope_aza_wbc", mu=theta[3], sigma=theta[3]/2, lower=0, initval=theta[3])
-        B = pm.TruncatedNormal("B", mu=theta[4], sigma=theta[4]/2, lower=0, initval=theta[4])
-        B0 = pm.TruncatedNormal("B0", mu=theta[5], sigma=theta[5]/2, lower=0, initval=theta[5])
-        sigma_wbc = pm.HalfNormal("sigma_wbc", 5)
-
-        # ODE solution function
-        ode_solution = pytensor_forward_function(pm.math.stack([ktr, gam,
-                                                               slope_ven_wbc,
-                                                               slope_aza_wbc, B, B0]))
-
-        # likelihood
-        pm.Normal("Y_neut_obs", mu=ode_solution, sigma=sigma_wbc, observed=wbc_data)
-    return new_patient_model_pm
-
-def build_pm_model_m2_wbc_only_uniform_prior(model, wbc, theta=None, n_samples=None, params_to_fit=None, **params):
-    """
-    Builds a PyMC model
-    """
-    if params_to_fit is None:
-        params_to_fit = param_names_m2_wbc_only
-    if theta is None:
-        model.resetToOrigin()
-        default_params = [model.getValue(x) for x in params_to_fit]
-        theta = default_params
-    pytensor_forward_function = generate_forward_function_wbc_only(model, wbc, n_samples=n_samples, params_to_fit=params_to_fit)
-    wbc_data = wbc[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
-    with pm.Model() as new_patient_model_pm:
-        # priors
-        # TODO: uniform priors for slope?
-        ktr = pm.Uniform("ktr", lower=0, upper=1, initval=theta[0])
-        gam = pm.Uniform("gam", lower=0, upper=1, initval=theta[1])
-        slope_ven_wbc = pm.Uniform("slope_ven_wbc", lower=0, upper=10, initval=theta[2])
-        slope_aza_wbc = pm.Uniform("slope_aza_wbc", lower=0, upper=10, initval=theta[3])
-        B = pm.Uniform("B", lower=0, upper=15, initval=theta[4])
-        B0 = pm.Uniform("B0", lower=0, upper=15, initval=theta[5])
-        # Prior for initial blasts should go between 0.0 and 1
+        if uniform_prior:
+            ktr = pm.Uniform("ktr", lower=0, upper=1, initval=theta[0])
+            gam = pm.Uniform("gam", lower=0, upper=1, initval=theta[1])
+            slope_ven_wbc = pm.Uniform("slope_ven_wbc", lower=0, upper=10, initval=theta[2])
+            slope_aza_wbc = pm.Uniform("slope_aza_wbc", lower=0, upper=10, initval=theta[3])
+            B = pm.Uniform("B", lower=0, upper=15, initval=theta[4])
+            B0 = pm.Uniform("B0", lower=0, upper=15, initval=theta[5])
+        else:
+            ktr = pm.TruncatedNormal("ktr", mu=theta[0], sigma=theta[0]/2, lower=0, initval=theta[0])
+            gam = pm.TruncatedNormal("gam", mu=theta[1], sigma=theta[1]/3, lower=0, initval=theta[1])
+            slope_ven_wbc = pm.TruncatedNormal("slope_ven_wbc", mu=theta[2], sigma=theta[2]/2, lower=0, initval=theta[2])
+            slope_aza_wbc = pm.TruncatedNormal("slope_aza_wbc", mu=theta[3], sigma=theta[3]/2, lower=0, initval=theta[3])
+            B = pm.TruncatedNormal("B", mu=theta[4], sigma=theta[4]/2, lower=0, initval=theta[4])
+            B0 = pm.TruncatedNormal("B0", mu=theta[5], sigma=theta[5]/2, lower=0, initval=theta[5])
         sigma_wbc = pm.HalfNormal("sigma_wbc", 5)
 
         # ODE solution function
@@ -464,6 +440,90 @@ param_names_m2b = ['ktr', 'gam', 'slope_ven_blast', 'slope_aza_blast', 'slope_ve
 param_bounds_m2b = [(0, 1), (0, 1), (0, 5), (0, 5), (0, 5), (0, 5), (0, 10), (0, 10), (0, 10), (0, 1), (0, 1)]
 
 # TODO: blast only sub-model with the same desc but different parameters
+model_desc_m2b_blast_only = """
+//Aza PK model
+
+in_aza_treatment = 0;
+in_ven_treatment = 0;
+
+// WBCs (proliferating, transit, mature)
+species $Xprol; species $Xtr; species $Xwbc; 
+
+// simplified drug effect model
+// effect
+E_ven_wbc := in_ven_treatment*slope_ven_wbc; 
+E_aza_wbc := in_aza_treatment*slope_aza_wbc;
+
+// using the M3 model structure from Jost 2019
+eps = 1e-8;
+wbc_drug := 1 - E_ven_wbc - E_aza_wbc;
+F := piecewise(wbc_drug*ktr, wbc_drug < 0, wbc_drug*ktr*((B+eps)/(Xwbc+eps))^gam);
+G := ktr/(1+bi*Xblasts_obs);
+D := (Xprol + d*Xl1);
+BM_eq = 4*B*kwbc/ktr;
+dc_piece := D - BM_eq;
+dc := piecewise(0, dc_piece <= 0, d*dc_piece);
+
+Xprol' = Xprol*(F - G - dc);
+Xtr' =  G * Xprol - G * Xtr;
+Xwbc' = G * Xtr - kwbc * Xwbc;
+
+// leukemic blasts (bone marrow, blood)
+species $Xl1; species $Xl2;
+species $Xblasts; species $Xblasts_obs;
+
+// PD model - leukemic blasts
+E_ven_blast := slope_ven_blast * in_ven_treatment;
+E_aza_blast := slope_aza_blast * in_aza_treatment;
+
+klc := 1/(1 + c1*Xwbc + c2*Xl2);
+
+Xl1' = Xl1*(2*p1*a1 - p1 - p1*(E_ven_blast+E_aza_blast) - dc);
+Xl2' = 2*(1 - a1*klc) * p1 * Xl1 - d2 * Xl2;
+
+// cellularity
+CR = 0.5;
+// DB is the "approximate maximal tumor burden"
+DB = 10^12;
+// Xblasts is the observed blast concentration.
+//Xblasts := 100*(Xl1 + 0.005*Xtr)/(CR*DB);
+//Xblasts0 = 100*(Xl1 + 0.005*Xtr)/(CR*DB);
+// okay... I don't know what to do exactly with Xl1.
+Xblasts_obs := 100*(Xl1/(Xl1 + Xprol + 1e-2));
+
+// PD model of WBCs and leukemic blasts
+// source is https://link.springer.com/article/10.1007/s11095-014-1429-9
+kwbc = 2.3765; 
+keg = 0.592*24;
+kANC = 5.64*24;
+beta = 0.234;
+// source is https://www.nature.com/articles/s41598-018-21115-4
+a1 = 0.875;
+d2 = 2.3;
+c1 = 0.01;
+c2 = 0.01;
+
+// parameters to fit - default values can be found in table 1 of the original paper.
+ktr = 0.236; // transition rate - unit: 1/day
+gam = 0.651; // feedback of G-CSF on WBC proliferation - MAKE SURE THIS VARIABLE IS NAMED gam
+B = 4.67; // unit: G/L
+B0 = 4.67;
+
+slope_ven_blast = 1.1;//7.94; // unit: L/micromol
+slope_aza_blast = 1.1; //;
+slope_ven_wbc = 1.1;//7.94; // unit: L/micromol
+slope_aza_wbc = 1.1; //;
+p1 = 0.1; // leukemic blast proliferation rate
+d = 1;
+bi = 0.1;
+
+// initial values
+Xprol = B*kwbc/ktr;
+Xtr = B*kwbc/ktr;
+Xwbc = B;
+Xl1 = 0.04;
+"""
+
 
 param_names_m2b_blast_only = ['slope_ven_blast', 'slope_aza_blast', 'Xl1', 'p1']
 param_bounds_m2b_blast_only = [(0, 5), (0, 5), (0, 10), (0, 1)]
@@ -508,7 +568,6 @@ def initialization_fn_m2b_2(model, param_vals):
     model.setValue('BM_eq', 4*B*kwbc/ktr)
     return model
 
-
 def build_pm_model_m2b(model, wbc, blasts, theta=None, n_samples=None, params_to_fit=None,
         initialization=None, use_b0=False, uniform_prior=False, **params):
     """
@@ -520,13 +579,13 @@ def build_pm_model_m2b(model, wbc, blasts, theta=None, n_samples=None, params_to
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
     blast_data = blasts[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
-    print('blast_data:', blast_data)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         # TODO: uniform priors for slope?
@@ -592,11 +651,11 @@ def build_pm_model_m2b_blast_only(model, wbc, blasts, theta=None, n_samples=None
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     blast_data = blasts[1].to_numpy(dtype=np.float64)
-    print('blast_data:', blast_data)
+    #print('blast_data:', blast_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         # TODO: uniform priors for slope?
@@ -734,11 +793,11 @@ def build_pm_model_m2b_wbc_only(model, wbc, theta=None, n_samples=None, params_t
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function_wbc_only(model, wbc, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
+    #print('wbc_data:', wbc_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         if not uniform_prior:
@@ -908,13 +967,13 @@ def build_pm_model_m2c(model, wbc, blasts, theta=None, n_samples=None, params_to
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
     blast_data = blasts[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
-    print('blast_data:', blast_data)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         if not uniform_prior:
@@ -1098,13 +1157,13 @@ def build_pm_model_m2d(model, wbc, blasts, theta=None, n_samples=None, params_to
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
     blast_data = blasts[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
-    print('blast_data:', blast_data)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         if not uniform_prior:
@@ -1240,11 +1299,10 @@ species $Xprol; species $Xtr; species $Xwbc;
 // simplified drug effect model
 // effect
 E_ven_wbc := in_ven_treatment*slope_ven_wbc; 
-E_aza_wbc := in_aza_treatment*slope_aza_wbc;
 
 // using the M3 model structure from Jost 2019
 eps = 1e-8;
-wbc_drug := 1 - E_ven_wbc - E_aza_wbc;
+wbc_drug := 1 - E_ven_wbc;
 F := piecewise(wbc_drug*ktr, wbc_drug < 0, wbc_drug*ktr*((B+eps)/(Xwbc+eps))^gam);
 G := ktr/(1 + bi*Xblasts_obs);
 D := (Xprol + d*Xl1);
@@ -1262,9 +1320,8 @@ species $Xblasts; species $Xblasts_obs;
 
 // PD model - leukemic blasts
 E_ven_blast := slope_ven_blast * in_ven_treatment;
-E_aza_blast := slope_aza_blast * in_aza_treatment;
 
-Xl1' = p1*Xl1*(a1 - Xl1/1 - E_ven_blast - E_aza_blast);
+Xl1' = p1*Xl1*(a1 - Xl1/1 - E_ven_blast);
 
 // Xblasts_obs
 Xblasts_obs := 100*Xl1;
@@ -1288,9 +1345,7 @@ B = 4.67; // unit: G/L
 B0 = 4.67;
 
 slope_ven_blast = 1.1;//7.94; // unit: L/micromol
-slope_aza_blast = 1.1; //;
 slope_ven_wbc = 1.1;//7.94; // unit: L/micromol
-slope_aza_wbc = 1.1; //;
 p1 = 0.1; // leukemic blast proliferation rate
 d = 1;
 bi = 0.1;
@@ -1343,13 +1398,13 @@ def build_pm_model_m2f(model, wbc, blasts, theta=None, n_samples=None, params_to
         model.resetToOrigin()
         default_params = [model.getValue(x) for x in params_to_fit]
         theta = default_params
-    print('theta:', theta)
+    #print('theta:', theta)
     pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
             params_to_fit=params_to_fit, initialization=initialization)
     wbc_data = wbc[1].to_numpy(dtype=np.float64)
     blast_data = blasts[1].to_numpy(dtype=np.float64)
-    print('wbc_data:', wbc_data)
-    print('blast_data:', blast_data)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
     with pm.Model() as new_patient_model_pm:
         # priors
         if not uniform_prior:
@@ -1396,5 +1451,264 @@ def build_pm_model_m2f(model, wbc, blasts, theta=None, n_samples=None, params_to
         pm.Normal("Y_blast_obs", mu=blast_ode, sigma=sigma_blasts, observed=blast_data)
     return new_patient_model_pm
 
+
+###################################
+# model m2cs - use the Sager 2024 stuff - different feedback term, p1/(p2 + Xma)
+# source: https://www.biorxiv.org/content/10.1101/2024.06.17.599366v1.full.pdf
+
+
+model_desc_m2cs = """
+//Aza PK model
+
+in_aza_treatment = 0;
+in_ven_treatment = 0;
+
+// WBCs (proliferating, transit, mature)
+species $Xprol; species $Xtr; species $Xwbc; 
+
+// simplified drug effect model
+// effect
+E_ven_wbc := in_ven_treatment*slope_ven_wbc; 
+E_aza_wbc := in_aza_treatment*slope_aza_wbc;
+
+// using the M3 model structure from Jost 2019
+wbc_drug := 1 - E_ven_wbc - E_aza_wbc;
+F := piecewise(wbc_drug*ktr, wbc_drug < 0, wbc_drug*ktr*((p1c)/(Xwbc+p2c)));
+G := ktr/(1 + bi*Xblasts_obs);
+D := (Xprol + d*Xl1);
+BM_eq = 4*B*kwbc/ktr;
+dc_piece := D - BM_eq;
+dc := piecewise(0, dc_piece <= 0, d*dc_piece);
+
+Xprol' = Xprol*(F - G - dc);
+Xtr' =  G * Xprol - G * Xtr;
+Xwbc' = G * Xtr - kwbc * Xwbc;
+
+// leukemic blasts (bone marrow, blood)
+species $Xl1; species $Xl2;
+species $Xblasts; species $Xblasts_obs;
+
+// PD model - leukemic blasts
+E_ven_blast := slope_ven_blast * in_ven_treatment;
+E_aza_blast := slope_aza_blast * in_aza_treatment;
+
+klc := 1/(1 + c1*Xwbc + c2*Xl2);
+
+Xl1' = p1*Xl1*(2*a1*klc - a1*klc - Xl1/1 - E_ven_blast - E_aza_blast);
+Xl2' = 2*(1 - a1*klc) * p1 * Xl1 - d2 * Xl2;
+
+// Xblasts_obs
+Xblasts_obs := 100*Xl1;
+
+// PD model of WBCs and leukemic blasts
+// source is https://link.springer.com/article/10.1007/s11095-014-1429-9
+kwbc = 2.3765; 
+keg = 0.592*24;
+kANC = 5.64*24;
+beta = 0.234;
+// source is https://www.nature.com/articles/s41598-018-21115-4
+a1 = 0.875;
+d2 = 2.3;
+c1 = 0.01;
+c2 = 0.01;
+
+// parameters to fit - default values can be found in table 1 of the original paper.
+ktr = 0.236; // transition rate - unit: 1/day
+p1c = 1.44; // p1 from https://www.biorxiv.org/content/biorxiv/early/2024/06/19/2024.06.17.599366.full.pdf
+p2c = 2.11;
+B = 4.67; // unit: G/L
+B0 = 4.67;
+
+slope_ven_blast = 1.1;//7.94; // unit: L/micromol
+slope_aza_blast = 1.1; //;
+slope_ven_wbc = 1.1;//7.94; // unit: L/micromol
+slope_aza_wbc = 1.1; //;
+p1 = 0.1; // leukemic blast proliferation rate
+d = 1;
+bi = 0.1;
+
+// initial values
+Xprol = B*kwbc/ktr;
+Xtr = B*kwbc/ktr;
+Xwbc = B;
+Xl1 = 0.04;
+"""
+
+param_names_m2cs = ['ktr', 'p1c', 'slope_ven_blast', 'slope_aza_blast', 'slope_ven_wbc', 'slope_aza_wbc', 'B', 'Xl1', 'B0', 'p1', 'bi', 'p2c']
+param_bounds_m2cs = [(0, 1), (0, 5), (0, 5), (0, 5), (0, 5), (0, 5), (0, 10), (0, 10), (0, 10), (0, 1), (0, 1), (0, 5)]
+
+
+def initialization_fn_m2cs_2(model, param_vals):
+    # initializing some of the model params to equilibrium values?
+    ktr = param_vals[0]
+    B = param_vals[6]
+    B0 = param_vals[8]
+    kwbc = model.getValue('kwbc')
+    model.setValue('Xprol', B0*kwbc/ktr)
+    model.setValue('Xtr', B0*kwbc/ktr)
+    model.setValue('Xwbc', B0)
+    model.setValue('BM_eq', 4*B*kwbc/ktr)
+    return model
+
+
+def build_pm_model_m2cs(model, wbc, blasts, theta=None, n_samples=None, params_to_fit=None,
+        initialization=None, use_b0=False, uniform_prior=False, **params):
+    """
+    Builds a PyMC model
+    """
+    if params_to_fit is None:
+        params_to_fit = param_names_m2cs
+    if theta is None:
+        model.resetToOrigin()
+        default_params = [model.getValue(x) for x in params_to_fit]
+        theta = default_params
+    #print('theta:', theta)
+    pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
+            params_to_fit=params_to_fit, initialization=initialization)
+    wbc_data = wbc[1].to_numpy(dtype=np.float64)
+    blast_data = blasts[1].to_numpy(dtype=np.float64)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
+    with pm.Model() as new_patient_model_pm:
+        # priors
+        if not uniform_prior:
+            ktr = pm.TruncatedNormal("ktr", mu=theta[0], sigma=theta[0]/2, lower=0, upper=1, initval=theta[0])
+            p1c = pm.TruncatedNormal("p1c", mu=theta[1], sigma=theta[1]/2, lower=0, upper=5, initval=theta[1])
+            slope_ven_blast = pm.TruncatedNormal("slope_ven_blast", mu=theta[2], sigma=theta[2]/2, lower=0, initval=theta[2])
+            slope_aza_blast = pm.TruncatedNormal("slope_aza_blast", mu=theta[3], sigma=theta[3]/2, lower=0, initval=theta[3])
+            slope_ven_wbc = pm.TruncatedNormal("slope_ven_wbc", mu=theta[4], sigma=theta[4]/2, lower=0, initval=theta[4])
+            slope_aza_wbc = pm.TruncatedNormal("slope_aza_wbc", mu=theta[5], sigma=theta[5]/2, lower=0, initval=theta[5])
+            B = pm.TruncatedNormal("B", mu=theta[6], sigma=theta[6]/2, lower=0, initval=theta[6])
+            if use_b0:
+                B0 = pm.TruncatedNormal('B0', mu=theta[8], sigma=theta[8]/2, lower=0, initval=theta[8])
+            p1 = pm.TruncatedNormal('p1', mu=theta[9], sigma=theta[9]/2, lower=0, initval=theta[9])
+            bi = pm.TruncatedNormal('bi', mu=theta[10], sigma=theta[10]/2, lower=0, upper=1, initval=theta[10])
+            p2c = pm.TruncatedNormal('p2c', mu=theta[11], sigma=theta[11]/2, lower=0, upper=1, initval=theta[11])
+        else:
+            ktr = pm.Uniform("ktr", lower=0, upper=1, initval=theta[0])
+            p1c = pm.Uniform("p1c", lower=0, upper=5, initval=theta[1])
+            slope_ven_blast = pm.Uniform("slope_ven_blast", lower=0, upper=5, initval=theta[2])
+            slope_aza_blast = pm.Uniform("slope_aza_blast", lower=0, upper=5, initval=theta[3])
+            slope_ven_wbc = pm.Uniform("slope_ven_wbc", lower=0, upper=5, initval=theta[4])
+            slope_aza_wbc = pm.Uniform("slope_aza_wbc", lower=0, upper=5, initval=theta[5])
+            B = pm.Uniform("B", lower=0, upper=10, initval=theta[6])
+            if use_b0:
+                B0 = pm.Uniform('B0', lower=0, upper=10, initval=theta[8])
+            p1 = pm.Uniform('p1', lower=0, upper=1, initval=theta[9])
+            bi = pm.Uniform('bi', lower=0, upper=1, initval=theta[10])
+            p2c = pm.Uniform('p2c', lower=0, upper=5, initval=theta[11])
+        Xl1 = pm.Uniform('Xl1', lower=0, upper=10, initval=theta[7])
+        sigma_wbc = pm.HalfNormal("sigma_wbc", 5)
+        sigma_blasts = pm.HalfNormal("sigma_blasts", 5)
+
+        # ODE solution function
+        ode_solution = pytensor_forward_function(pm.math.stack([ktr, p1c,
+                                                               slope_ven_blast,
+                                                               slope_aza_blast,
+                                                               slope_ven_wbc,
+                                                               slope_aza_wbc, B,
+                                                               Xl1, p1, bi,
+                                                               p2c]))
+        if use_b0:
+            ode_solution = pytensor_forward_function(pm.math.stack([ktr, p1c,
+                                                               slope_ven_blast,
+                                                               slope_aza_blast,
+                                                               slope_ven_wbc,
+                                                               slope_aza_wbc, B,
+                                                               Xl1, B0, p1, bi,
+                                                               p2c]))
+        
+        # split up the blasts and WBCs
+        wbc_ode = ode_solution[0,:len(wbc_data)]
+        blast_ode = ode_solution[1,:len(blast_data)]
+
+        # likelihood
+        pm.Normal("Y_wbc_obs", mu=wbc_ode, sigma=sigma_wbc, observed=wbc_data)
+        pm.Normal("Y_blast_obs", mu=blast_ode, sigma=sigma_blasts, observed=blast_data)
+    return new_patient_model_pm
+
+
+#####################################################
+## m2_blasts_only
+
+model_desc_m2_blasts_only = """
+//Aza PK model
+
+in_aza_treatment = 0;
+in_ven_treatment = 0;
+// leukemic blasts (bone marrow, blood)
+
+species $Xl1;
+pecies $Xblasts_obs;
+
+// PD model - leukemic blasts
+E_ven_blast := slope_ven_blast * in_ven_treatment;
+E_aza_blast := slope_aza_blast * in_aza_treatment;
+
+
+Xl1' = p1*Xl1*(1 - Xl1/1 - E_ven_blast - E_aza_blast);
+
+// Xblasts_obs
+Xblasts_obs := 100*Xl1;
+
+// parameters to fit - default values can be found in table 1 of the original paper.
+
+slope_ven_blast = 1.1;//7.94; // unit: L/micromol
+slope_aza_blast = 1.1; //;
+p1 = 0.1; // leukemic blast proliferation rate
+
+// initial values
+Xl1 = 0.04;
+"""
+
+param_names_m2_blasts_only = ['slope_ven_blast', 'slope_aza_blast', 'Xl1', 'p1', ]
+param_bounds_m2_blasts_only = [(0, 5), (0, 5), (0, 1), (0, 1)]
+
+
+def initialization_fn_m2_blasts_only(model, param_vals):
+    return model
+
+
+def build_pm_model_m2_blasts_only(model, wbc, blasts, theta=None, n_samples=None, params_to_fit=None,
+        initialization=None, use_b0=False, uniform_prior=False, **params):
+    """
+    Builds a PyMC model
+    """
+    if params_to_fit is None:
+        params_to_fit = param_names_m2_blasts_only
+    if theta is None:
+        model.resetToOrigin()
+        default_params = [model.getValue(x) for x in params_to_fit]
+        theta = default_params
+    #print('theta:', theta)
+    pytensor_forward_function = generate_forward_function(model, wbc, blasts, n_samples=n_samples,
+            params_to_fit=params_to_fit, initialization=initialization)
+    blast_data = blasts[1].to_numpy(dtype=np.float64)
+    #print('wbc_data:', wbc_data)
+    #print('blast_data:', blast_data)
+    with pm.Model() as new_patient_model_pm:
+        # priors
+        if not uniform_prior:
+            slope_ven_blast = pm.TruncatedNormal("slope_ven_blast", mu=theta[0], sigma=theta[0]/2, lower=0, initval=theta[2])
+            slope_aza_blast = pm.TruncatedNormal("slope_aza_blast", mu=theta[1], sigma=theta[1]/2, lower=0, initval=theta[3])
+            p1 = pm.TruncatedNormal('p1', mu=theta[9], sigma=theta[3]/2, lower=0, initval=theta[9])
+        else:
+            slope_ven_blast = pm.Uniform("slope_ven_blast", lower=0, upper=5, initval=theta[0])
+            slope_aza_blast = pm.Uniform("slope_aza_blast", lower=0, upper=5, initval=theta[1])
+            p1 = pm.Uniform('p1', lower=0, upper=1, initval=theta[3])
+        Xl1 = pm.Uniform('Xl1', lower=0, upper=10, initval=theta[2])
+        sigma_blasts = pm.HalfNormal("sigma_blasts", 5)
+
+        # ODE solution function
+        ode_solution = pytensor_forward_function(pm.math.stack([
+                                                               slope_ven_blast,
+                                                               slope_aza_blast,
+                                                               Xl1, p1]))
+        # split up the blasts and WBCs
+        blast_ode = ode_solution[1,:len(blast_data)]
+
+        # likelihood
+        pm.Normal("Y_blast_obs", mu=blast_ode, sigma=sigma_blasts, observed=blast_data)
+    return new_patient_model_pm
 
 

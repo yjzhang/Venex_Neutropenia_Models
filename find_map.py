@@ -55,6 +55,7 @@ def find_MAP(
     model=None,
     *args,
     seed: Optional[int] = None,
+    progress_filename=None,
     **kwargs
 ):
     """Finds the local maximum a posteriori point given a model.
@@ -137,7 +138,7 @@ def find_MAP(
     compiled_logp_func = DictToArrayBijection.mapf(model.compile_logp(jacobian=False), start)
     logp_func = lambda x: compiled_logp_func(RaveledVars(x, x0.point_map_info))
 
-    rvs = [model.values_to_rvs[vars_dict[name]] for name, _, _ in x0.point_map_info]
+    rvs = [model.values_to_rvs[vars_dict[name_[0]]] for name_ in x0.point_map_info]
     try:
         # This might be needed for calls to `dlogp_func`
         # start_map_info = tuple((v.name, v.shape, v.dtype) for v in vars)
@@ -157,9 +158,9 @@ def find_MAP(
             + "parameters."
         )
     if compute_gradient and method != "Powell":
-        cost_func = CostFuncWrapper(maxeval, progressbar, logp_func, dlogp_func)
+        cost_func = CostFuncWrapper(maxeval, progressbar, logp_func, dlogp_func, progress_filename=progress_filename)
     else:
-        cost_func = CostFuncWrapper(maxeval, progressbar, logp_func)
+        cost_func = CostFuncWrapper(maxeval, progressbar, logp_func, progress_filename=progress_filename)
         compute_gradient = False
 
     try:
@@ -200,7 +201,7 @@ def allfinite(x):
 
 
 class CostFuncWrapper:
-    def __init__(self, maxeval=5000, progressbar=True, logp_func=None, dlogp_func=None):
+    def __init__(self, maxeval=5000, progressbar=True, logp_func=None, dlogp_func=None, progress_filename=None):
         self.n_eval = 0
         self.maxeval = maxeval
         self.logp_func = logp_func
@@ -218,6 +219,9 @@ class CostFuncWrapper:
             self.progress.update(0)
         else:
             self.progress = range(maxeval)
+        self.progress_file = None
+        if progress_filename is not None:
+            self.progress_file = progress_filename
 
     def __call__(self, x):
         neg_value = np.float64(self.logp_func(pm.floatX(x)))
@@ -243,6 +247,11 @@ class CostFuncWrapper:
         if self.progressbar:
             assert isinstance(self.progress, ProgressBar)
             self.progress.update_bar(self.n_eval)
+
+        if self.progress_file is not None:
+            if self.n_eval % 100 == 0:
+                with open(self.progress_file, 'w') as f:
+                    f.write(str(self.n_eval) + '\n')
 
         if self.use_gradient:
             return value, grad
@@ -281,10 +290,13 @@ def pybobyqa_wrapper(obj, x0, *args, **kwargs):
         bounds_correction = kwargs['bounds_correction']
     else:
         bounds_correction = 1
+    if 'fake_bounds' in kwargs:
+        bounds_tuple = (np.log([1e-8 for x in bounds]), np.log([max(100, x[1]) for x in bounds]))
+    else:
+        bounds_tuple = (np.log([x[0]+1e-8 for x in bounds]), np.log([x[1]+bounds_correction+1e-8 for x in bounds]))
     # There's some sort of transform here that is not being done, resulting in a range
     # that's smaller than it should be.
     # That's why the bounds_correction is used here.
-    bounds_tuple = (np.log([x[0]+1e-8 for x in bounds]), np.log([x[1]+bounds_correction+1e-8 for x in bounds]))
     if 'maxfun' in kwargs:
         maxfun = kwargs['maxfun']
     else:
