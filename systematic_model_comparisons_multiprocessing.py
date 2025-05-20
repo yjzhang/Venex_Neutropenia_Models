@@ -805,6 +805,17 @@ def run_all_patients_clinical_prior(model_name, prior_params_filename,
 
 
 if __name__ == '__main__':
+    # comparing different optimizers
+    #params_filename = 'systematic_comparison_results_different_optimizers/m2c_pybobyqa_fake_bounds_mp_param_data.csv'
+    #rmse_filename = 'systematic_comparison_results_different_optimizers/m2c_pybobyqa_fake_bounds_mp_rmse_data.csv'
+    #run_all_patients('m2c', n_threads=8, params_filename=params_filename,
+    #        rmse_filename=rmse_filename,
+    #        map_kwargs={'maxfun': 20000, 'fake_bounds': True})
+    params_filename = 'systematic_comparison_results_different_optimizers/m2f_pybobyqa_fake_bounds_mp_param_data.csv'
+    rmse_filename = 'systematic_comparison_results_different_optimizers/m2f_pybobyqa_fake_bounds_mp_rmse_data.csv'
+    run_all_patients('m2f', n_threads=8, params_filename=params_filename,
+            rmse_filename=rmse_filename,
+            map_kwargs={'maxfun': 20000, 'fake_bounds': True})
     """
     run_all_patients('m2b', params_filename='systematic_comparison_results_simplified_models/m2b_mp_param_data.csv',
             rmse_filename='systematic_comparison_results_simplified_models/m2b_mp_rmse_data.csv',
