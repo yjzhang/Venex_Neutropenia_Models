@@ -80,7 +80,6 @@ def get_model_results_times(model_output, model_times, data_times):
             factor = (t - prev_time)/(current_time - prev_time)
             model_val = factor*model_output[index1] + (1-factor)*model_output[index0]
         model_vals.append(model_val)
-    # TODO
     return model_vals
 
 
@@ -364,7 +363,7 @@ def personalize_model_global(data_subset, model,
     Args:
         data_subset: pandas dataframe
         model: compiled tellurium model
-        use_val_ranges:
+        use_val_ranges: whether or not to scale the output variables. Should be False probably.
         model_vars (list): names of the dependent/output variables in the model.
         data_vars (list): column names for the dependent/output variables in data_subset.
         optim_vars (list): names of the (independent) variables in the model that we're optimizing.
@@ -408,7 +407,7 @@ def personalize_model_multiple_inits(data_subset, model,
     Args:
         data_subset: pandas dataframe
         model: compiled tellurium model
-        use_val_ranges:
+        use_val_ranges: whether or not to scale the output variables. Should be False probably.
         model_vars (list): names of the dependent/output variables in the model.
         data_vars (list): column names for the dependent/output variables in data_subset.
         optim_vars (list): names of the (independent) variables in the model that we're optimizing.

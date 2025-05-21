@@ -252,8 +252,8 @@ def generate_residual_function(model, wbc, blasts, n_samples=None, params_to_fit
         params_to_fit = param_names
     # n_samples should be max time * 10?
     if n_samples is None:
-        n_samples = wbc.iloc[:,0].max()*20
-        print('n_samples:', n_samples)
+        n_samples = int(wbc.iloc[:,0].max()*20)
+        #print('n_samples:', n_samples)
     resid_function = generate_objective_function_multiple_times(model,
                                     {'Xwbc': wbc.iloc[:,1].to_numpy(), 
                                      'Xblasts_obs': blasts.iloc[:,1].to_numpy()}, # observed values
@@ -288,8 +288,8 @@ def generate_error_function(model, wbc, blasts, n_samples=None, params_to_fit=No
         params_to_fit = param_names
     # n_samples should be max time * 10?
     if n_samples is None:
-        n_samples = wbc.iloc[:,0].max()*20
-        print('n_samples:', n_samples)
+        n_samples = int(wbc.iloc[:,0].max()*20)
+        #print('n_samples:', n_samples)
     observed_data = {'Xwbc': wbc.iloc[:,1].to_numpy(), 
                      'Xblasts_obs': blasts.iloc[:,1].to_numpy()}
     if wbc_only:
@@ -497,9 +497,10 @@ def build_pm_model_from_dataframes(cycle_info, leuk_table, blast_table, model_de
     leuk_table = leuk_table.copy()
     if fill_dates:
         leuk_table.loc[lab_date] = leuk_table[lab_date].fillna(leuk_table[event_date])
-    leuk_data = leuk_table[[lab_date, b_leuk]]
     if use_neut:
         leuk_data = leuk_table[[lab_date, b_neut]]
+    else:
+        leuk_data = leuk_table[[lab_date, b_leuk]]
     leuk_data.columns = [0,1]
     leuk_data = leuk_data.reset_index().iloc[:,1:]
     # TODO: get default params
@@ -508,10 +509,12 @@ def build_pm_model_from_dataframes(cycle_info, leuk_table, blast_table, model_de
         default_params = [model.getValue(x) for x in params_to_fit]
         if theta is None:
             theta = default_params
-        b_index = params_to_fit.index('B')
-        b0_index = params_to_fit.index('B0')
-        theta[b_index] = leuk_data.iloc[:, 1].mean()
-        theta[b0_index] = leuk_data.iloc[0, 1] + 1e-4
+        if 'B' in params_to_fit:
+            b_index = params_to_fit.index('B')
+            theta[b_index] = leuk_data.iloc[:, 1].mean()
+        if 'B0' in params_to_fit:
+            b0_index = params_to_fit.index('B0')
+            theta[b0_index] = leuk_data.iloc[0, 1] + 1e-4
     if build_model_function is None:
         build_model_function = build_pm_model
     if use_blasts:
@@ -545,8 +548,8 @@ def sample_model(pm_model, draws=5000):
     return trace
 
 
-def fit_model_mc(pm_model, draws=5000, params_to_fit=None, **sample_kwargs):
-    "Runs MCMC to get a model posterior. Returns the posterior means and the table of traces."
+def fit_model_mc(pm_model, draws=5000, params_to_fit=None, return_val='mean', **sample_kwargs):
+    "Runs MCMC to get a model posterior. Returns the posterior means (or medians) and the table of traces."
     if params_to_fit is None:
         params_to_fit = param_names
     vars_list = [x for x in list(pm_model.values_to_rvs.keys()) if not isinstance(x, pt.TensorConstant)]
@@ -554,7 +557,12 @@ def fit_model_mc(pm_model, draws=5000, params_to_fit=None, **sample_kwargs):
     with pm_model:
         trace_DEMZ = pm.sample(step=[pm.DEMetropolisZ(vars_list)], tune=tune, draws=draws, **sample_kwargs)
     trace = trace_DEMZ
-    pymc_posterior_means = [float(trace.posterior[x].mean()) for x in params_to_fit]
+    if return_val == 'mean':
+        pymc_posterior_means = [float(trace.posterior[x].mean()) for x in params_to_fit]
+    elif return_val == 'median':
+        pymc_posterior_means = [float(trace.posterior[x].median()) for x in params_to_fit]
+    else:
+        pymc_posterior_means = [float(trace.posterior[x].mean()) for x in params_to_fit]
     return pymc_posterior_means, trace
 
 
@@ -590,7 +598,6 @@ def split_cycles(leuk_table, blast_table, cycle_info, n_cycles_train=3,
         n_cycles_test: number of cycles to use for testing
         n_cycles_skip: number of cycles to skip
     """
-    # TODO: I believe there is a bug in this...
     skip_end_day = -10
     train_end_day = 0
     test_end_day = 0
@@ -607,6 +614,12 @@ def split_cycles(leuk_table, blast_table, cycle_info, n_cycles_train=3,
         elif i >= n_test_end:
             test_end_day = row.days_from_event
             break
+    if test_end_day == 0 and len(cycle_info) >= n_cycles_train + n_cycles_test + n_cycles_skip:
+        print('Warning: possibly not enough data for patient - ', len(cycle_info), 'cycles')
+        row = cycle_info.iloc[-1, :]
+        test_end_day = row.days_ven_stop
+    elif len(cycle_info) < n_cycles_train + n_cycles_test + n_cycles_skip:
+        print('Warning: not enough data for patient - ', len(cycle_info), 'cycles')
     leuk_table_train = leuk_table.query(f'lab_date <= {train_end_day} and lab_date >= {skip_end_day}')
     leuk_table_test = leuk_table.query(f'lab_date > {train_end_day} and lab_date <= {test_end_day}')
 
@@ -693,19 +706,21 @@ def extract_data_from_tables_new(blood_counts, bm_blasts, cycle_days, subject_id
     cycle_info = cycle_days[cycle_days['Pseudonym']==subject_id]
     blast_table = bm_blasts[bm_blasts['Pseudonym']==subject_id]
     # fill in NaNs in cycle dates
-    cycle_info.loc[:, 'days_aza_stop'] = cycle_info['days_aza_stop'].fillna(cycle_info['days_aza_start']+cycle_info['aza_days'])
-    cycle_info.loc[:, 'days_ven_stop'] = cycle_info['days_ven_stop'].fillna(cycle_info['days_ven_start']+cycle_info['venetoclax_days'])
+    if 'aza_days' in cycle_info.columns and 'venetoclax_days' in cycle_info.columns:
+        cycle_info.loc[:, 'days_aza_stop'] = cycle_info['days_aza_stop'].fillna(cycle_info['days_aza_start']+cycle_info['aza_days'])
+        cycle_info.loc[:, 'days_ven_stop'] = cycle_info['days_ven_stop'].fillna(cycle_info['days_ven_start']+cycle_info['venetoclax_days'])
     # clean up cycles whose day count is obviously off...
-    ven_days_subset = (cycle_info.days_ven_stop - cycle_info.days_ven_start).abs() - cycle_info.venetoclax_days > 5
-    aza_days_subset = (cycle_info.days_aza_stop - cycle_info.days_aza_start).abs() - cycle_info.aza_days > 5
-    cycle_info.loc[aza_days_subset, 'days_aza_stop'] = cycle_info['days_aza_start'] + cycle_info['aza_days']
-    cycle_info.loc[ven_days_subset, 'days_ven_stop'] = cycle_info['days_ven_start'] + cycle_info['venetoclax_days']
+        ven_days_subset = (cycle_info.days_ven_stop - cycle_info.days_ven_start).abs() - cycle_info.venetoclax_days > 5
+        aza_days_subset = (cycle_info.days_aza_stop - cycle_info.days_aza_start).abs() - cycle_info.aza_days > 5
+        cycle_info.loc[aza_days_subset, 'days_aza_stop'] = cycle_info['days_aza_start'] + cycle_info['aza_days']
+        cycle_info.loc[ven_days_subset, 'days_ven_stop'] = cycle_info['days_ven_start'] + cycle_info['venetoclax_days']
     # drop all nas
     cycle_info = cycle_info.dropna()
     # fill neutrophils with percentages
-    has_neut_percentage = (leuk_table.b_neut.isna() & (~leuk_table.b_neut_percentage.isna()))
-    data_has_neut_percentage = leuk_table[has_neut_percentage]
-    leuk_table.loc[has_neut_percentage, 'b_neut'] = data_has_neut_percentage.b_neut_percentage*data_has_neut_percentage.b_leuk/100
+    if 'b_neut_percentage' in leuk_table.columns:
+        has_neut_percentage = (leuk_table.b_neut.isna() & (~leuk_table.b_neut_percentage.isna()))
+        data_has_neut_percentage = leuk_table[has_neut_percentage]
+        leuk_table.loc[has_neut_percentage, 'b_neut'] = data_has_neut_percentage.b_neut_percentage*data_has_neut_percentage.b_leuk/100
 
     # filter neut by is_na, realistic values
     leuk_table = leuk_table[(~leuk_table.b_neut.isna()) & (~leuk_table.days_lab.isna())].copy()
@@ -713,9 +728,10 @@ def extract_data_from_tables_new(blood_counts, bm_blasts, cycle_days, subject_id
     leuk_table = leuk_table.sort_values('days_lab')
     leuk_table = leuk_table.loc[~leuk_table.days_lab.duplicated(keep='first'), :]
     # filter blasts
-    blast_table.loc[blast_table.bm_blasts_range == 0, 'bm_blasts'] = 2.5
-    blast_table.loc[blast_table.bm_blasts == '<5', 'bm_blasts'] = 2.5
-    blast_table = blast_table[(~blast_table.bm_blasts.isna()) & (~blast_table.days_from_bm.isna())].copy()
+    if 'bm_blasts_range' in blast_table.columns:
+        blast_table.loc[blast_table.bm_blasts_range == 0, 'bm_blasts'] = 2.5
+        blast_table.loc[blast_table.bm_blasts == '<5', 'bm_blasts'] = 2.5
+        blast_table = blast_table[(~blast_table.bm_blasts.isna()) & (~blast_table.days_from_bm.isna())].copy()
     # remove duplicate days
     blast_table = blast_table.sort_values('days_from_bm')
     blast_table = blast_table.loc[~blast_table.days_from_bm.duplicated(keep='first'), :]
@@ -731,7 +747,8 @@ def extract_data_from_tables_new(blood_counts, bm_blasts, cycle_days, subject_id
     return cycle_info, leuk_table, blast_table
 
 
-def run_model(model, params, max_time=200, n_samples=2000, selections=None, params_to_fit=None,
+def run_model(model, params, max_time=200, n_samples=2000, selections=None,
+        params_to_fit=None,
         initialization=None):
     """
     Runs the model with the given params.
@@ -756,6 +773,9 @@ def plot_data(results, cycle_info, leuk_table, blast_table, subject_id=1, save_f
     """
     Plots the data from a single run of the model.
     
+    Args:
+        results - an output of a tellurium model run. This could be None, to just plot the data.
+        cycle_info, leuk_table, blast_table: pandas dataframes as returned from extract_data_from_tables_new
     """
     b_leuk = 'b_leuk'
     label = 'leukocytes'
@@ -774,12 +794,13 @@ def plot_data(results, cycle_info, leuk_table, blast_table, subject_id=1, save_f
     else:
         axes[1].scatter(blast_table['date_bonemarrow'], blast_table.bm_blasts.astype(float), label='blasts (train)')
         axes[1].scatter(blast_table_test['date_bonemarrow'], blast_table_test.bm_blasts.astype(float), label='blasts (test)')
-    axes[1].plot(results['time'], results['Xblasts_obs'], label='model blasts')
-    #axes[0].scatter(wbc_data_patient1_neut['lab_date'], wbc_data_patient1_neut.b_neut, label='neutrophils')
-    if use_neut:
-        axes[0].plot(results['time'], results['Xwbc'], label='model neutrophils')
-    else:
-        axes[0].plot(results['time'], results['Xwbc'], label='model WBCs')
+    if results is not None:
+        axes[1].plot(results['time'], results['Xblasts_obs'], label='model blasts')
+        #axes[0].scatter(wbc_data_patient1_neut['lab_date'], wbc_data_patient1_neut.b_neut, label='neutrophils')
+        if use_neut:
+            axes[0].plot(results['time'], results['Xwbc'], label='model neutrophils')
+        else:
+            axes[0].plot(results['time'], results['Xwbc'], label='model WBCs')
     axes[0].set_xlabel('Day')
     if use_neut:
         axes[0].set_ylabel('Neutrophil counts (10^9 per liter)')
@@ -1044,13 +1065,21 @@ def classification_results(model_output, model_times, data_vals, data_times, thr
 def calculate_errors(model, params, cycle_info, leuk_table, blast_table,
         ode_samples_per_day=20, params_to_fit=None, wbc_only=False,
         use_neut=False, initialization=None, selections=None,
-        error_fn='rmse', blasts_only=False):
+        error_fn='rmse', blasts_only=False,
+        max_time=None):
     # TODO: corrcoef???
     from tellurium_model_fitting import rmse
     if params_to_fit is None:
         params_to_fit = param_names
-    x_max = max(cycle_info.venetoclax_stop.max(), cycle_info.aza_stop.max(), leuk_table.lab_date.max(), blast_table.date_bonemarrow.max()) + 10
-    x_max = int(x_max)
+    if max_time is None:
+        x_max = max(cycle_info.venetoclax_stop.max(), cycle_info.aza_stop.max(), leuk_table.lab_date.max(), blast_table.date_bonemarrow.max()) + 10
+        x_max = int(x_max)
+    else:
+        x_max = int(max_time)
+    if selections is None and blasts_only:
+        selections = ['time', 'Xblasts_obs']
+    if selections is None and wbc_only:
+        selections = ['time', 'Xwbc']
     results = run_model(model, params, max_time=x_max, n_samples=x_max*ode_samples_per_day, params_to_fit=params_to_fit,
             initialization=initialization, selections=selections)
     leuk_table = leuk_table.reset_index()
@@ -1058,12 +1087,18 @@ def calculate_errors(model, params, cycle_info, leuk_table, blast_table,
     if blasts_only:
         rmse_val = 0
     else:
-        if use_neut:
-            rmse_val = rmse(results['Xwbc'], results['time'], leuk_table['b_neut'], leuk_table['lab_date'], error_fn=error_fn)
+        if len(leuk_table) > 0:
+            if use_neut:
+                rmse_val = rmse(results['Xwbc'], results['time'], leuk_table['b_neut'], leuk_table['lab_date'], error_fn=error_fn)
+            else:
+                rmse_val = rmse(results['Xwbc'], results['time'], leuk_table['b_leuk'], leuk_table['lab_date'], error_fn=error_fn)
         else:
-            rmse_val = rmse(results['Xwbc'], results['time'], leuk_table['b_leuk'], leuk_table['lab_date'], error_fn=error_fn)
+            rmse_val = np.inf
     if not wbc_only:
-        rmse_blasts = rmse(results['Xblasts_obs'], results['time'], blast_table['bm_blasts'].astype(float), blast_table['date_bonemarrow'], error_fn=error_fn)
+        if len(blast_table) > 0:
+            rmse_blasts = rmse(results['Xblasts_obs'], results['time'], blast_table['bm_blasts'].astype(float), blast_table['date_bonemarrow'], error_fn=error_fn)
+        else:
+            rmse_blasts = np.inf
     else:
         rmse_blasts = 0
     return rmse_val, rmse_blasts, results
