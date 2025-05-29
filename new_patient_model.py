@@ -702,9 +702,18 @@ def extract_data_from_tables_new(blood_counts, bm_blasts, cycle_days, subject_id
         leuk_table or neut_table - table of leukocyte or neutrophil measurements
         blast_table
     """
-    leuk_table = blood_counts[blood_counts['Pseudonym'] == subject_id]
-    cycle_info = cycle_days[cycle_days['Pseudonym']==subject_id]
-    blast_table = bm_blasts[bm_blasts['Pseudonym']==subject_id]
+    if 'AnonymizedID' in blood_counts.columns:
+        leuk_table = blood_counts[blood_counts['AnonymizedID'] == subject_id]
+    else:
+        leuk_table = blood_counts[blood_counts['Pseudonym'] == subject_id]
+    if 'AnonymizedID' in cycle_days.columns:
+        cycle_info = cycle_days[cycle_days['AnonymizedID']==subject_id]
+    else:
+        cycle_info = cycle_days[cycle_days['Pseudonym']==subject_id]
+    if 'AnonymizedID' in bm_blasts.columns:
+        blast_table = bm_blasts[bm_blasts['AnonymizedID']==subject_id]
+    else:
+        blast_table = bm_blasts[bm_blasts['Pseudonym']==subject_id]
     # fill in NaNs in cycle dates
     if 'aza_days' in cycle_info.columns and 'venetoclax_days' in cycle_info.columns:
         cycle_info.loc[:, 'days_aza_stop'] = cycle_info['days_aza_stop'].fillna(cycle_info['days_aza_start']+cycle_info['aza_days'])
